@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPL BP模拟器 · 2026全局BanPick · 阵容强度模型</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #eef1f7;
+    color: #1f2430;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  button { font-family: inherit; cursor: pointer; border: none; outline: none; }
+  input, select { font-family: inherit; outline: none; }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    background: linear-gradient(90deg, #1c2b4a 0%, #2a3f6f 55%, #45263f 100%);
+    color: #fff;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  header .logo { font-size: 20px; font-weight: 800; letter-spacing: 1px; }
+  header .logo .sub { font-size: 12px; font-weight: 400; opacity: .75; margin-left: 8px; letter-spacing: 2px; }
+  header .spacer { flex: 1; }
+  .hbtn {
+    background: rgba(255,255,255,.14);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.25);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    transition: background .15s;
+  }
+  .hbtn:hover { background: rgba(255,255,255,.28); }
+
+  /* ---------- 记分板 ---------- */
+  .scoreboard {
+    background: #fff;
+    border-bottom: 1px solid #e2e6ef;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .sb-team { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+  .sb-team.right { justify-content: flex-end; }
+  .sb-name { font-weight: 700; font-size: 15px; }
+  .sb-side {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px; color: #fff; font-weight: 600;
+  }
+  .sb-side.blue { background: #2f6bff; }
+  .sb-side.red { background: #e5484d; }
+  .sb-score {
+    font-size: 30px; font-weight: 800; min-width: 120px; text-align: center;
+    letter-spacing: 6px; color: #1f2430;
+  }
+  .sb-mid { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .sb-bo { font-size: 12px; color: #6b7280; }
+  .sb-game { font-size: 14px; font-weight: 700; color: #334155; }
+  .win-dots { display: flex; gap: 4px; margin-top: 2px; }
+  .wdot { width: 9px; height: 9px; border-radius: 50%; background: #d7dce6; }
+  .wdot.on-blue { background: #2f6bff; }
+  .wdot.on-red { background: #e5484d; }
+
+  /* ---------- 主战场 ---------- */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 250px minmax(0,1fr) 250px;
+    gap: 14px;
+    padding: 14px 16px;
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; }
+    .team-panel { order: 2; }
+    .center { order: 1; }
+  }
+
+  .team-panel {
+    background: #fff;
+    border-radius: 14px;
+    border-top: 4px solid #cbd5e1;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 2px 10px rgba(30,40,80,.06);
+    transition: box-shadow .2s, border-color .2s;
+    align-self: start;
+  }
+  .team-panel.blue-active { border-top-color: #2f6bff; box-shadow: 0 4px 18px rgba(47,107,255,.25); }
+  .team-panel.red-active { border-top-color: #e5484d; box-shadow: 0 4px 18px rgba(229,72,77,.25); }
+  .tp-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+  .tp-name { font-weight: 800; font-size: 15px; }
+  .tp-side { font-size: 11px; padding: 2px 8px; border-radius: 20px; color: #fff; font-weight: 600; }
+  .tp-side.blue { background: #2f6bff; }
+  .tp-side.red { background: #e5484d; }
+  .tp-label { font-size: 12px; color: #7b8494; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .tp-label .line { flex: 1; height: 1px; background: #e5e9f2; }
+  .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .slots.five { grid-template-columns: repeat(5, 1fr); }
+  .slot {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    border: 1.5px dashed #cdd5e1;
+    background: #f6f8fc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #a5aebd;
+    text-align: center;
+    padding: 2px;
+    overflow: hidden;
+  }
+  .slot.ban-slot { aspect-ratio: auto; padding: 7px 2px; }
+  .slot.filled {
+    border-style: solid;
+    color: #1f2430;
+    font-weight: 700;
+    background: #fff;
+    box-shadow: inset 0 -3px 0 var(--role, #c3cad6);
+  }
+  .slot.filled.ban { background: #fdf1f2; border-color: #e8c2c4; color: #a03a3e; position: relative; }
+  .slot.filled.ban::after {
+    content: "×";
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: rgba(229,72,77,.55); font-weight: 800;
+  }
+  .slot.hidden-slot { border-style: solid; background: #2c3444; color: #8b96ab; border-color: #2c3444; }
+  .slot.ban.filled span, .slot.hidden-slot span { position: relative; z-index: 1; }
+
+  /* ---------- 中央区 ---------- */
+  .center { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+  .step-banner {
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 2px 10px rgba(30,40,80,.06);
+    border-left: 5px solid #94a3b8;
+    flex-wrap: wrap;
+  }
+  .step-banner.side-blue { border-left-color: #2f6bff; }
+  .step-banner.side-red { border-left-color: #e5484d; }
+  .sb-main { flex: 1; min-width: 200px; }
+  .sb-phase { font-size: 12px; color: #7b8494; font-weight: 600; }
+  .sb-actor { font-size: 18px; font-weight: 800; margin-top: 2px; }
+  .sb-actor .blue { color: #2f6bff; }
+  .sb-actor .red { color: #e5484d; }
+  .sb-actor .neutral { color: #334155; }
+  .timer-wrap { display: flex; align-items: center; gap: 10px; }
+  .timer-num {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800;
+    background: #f1f4fa; color: #334155; border: 3px solid #2f6bff;
+  }
+  .timer-num.warn { border-color: #e5484d; color: #e5484d; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  .timer-bar { width: 110px; height: 8px; background: #e8ecf4; border-radius: 4px; overflow: hidden; }
+  .timer-bar > div { height: 100%; background: #2f6bff; width: 100%; transition: width 1s linear; }
+  .timer-bar > div.warn { background: #e5484d; }
+
+  /* ---------- AI建议面板 ---------- */
+  .ai-panel {
+    background: #fff;
+    border-radius: 14px;
+    padding: 10px 14px;
+    box-shadow: 0 2px 10px rgba(30,40,80,.06);
+    border-left: 5px solid #7c5cff;
+  }
+  .ai-head { font-size: 12.5px; font-weight: 800; color: #6a4dff; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ai-note { font-size: 11px; color: #98a1b1; font-weight: 400; margin-left: auto; }
+  .ai-body { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .ai-chip {
+    border: 1.5px solid #e4e8f1; background: #fbfcfe; border-radius: 10px;
+    padding: 6px 10px; font-size: 12.5px; cursor: pointer; text-align: left;
+    transition: border-color .12s, background .12s, transform .1s;
+    max-width: 200px;
+  }
+  .ai-chip:hover { border-color: #7c5cff; background: #f6f3ff; transform: translateY(-1px); }
+  .ai-chip .ai-rank { font-weight: 800; color: #7c5cff; margin-right: 4px; }
+  .ai-chip .ai-reason { display: block; font-size: 11px; color: #8b93a3; margin-top: 3px; line-height: 1.5; }
+  .ai-empty { font-size: 12px; color: #98a1b1; }
+
+  /* ---------- 实时强度对比 ---------- */
+  .eval-strip {
+    background: #fff; border-radius: 14px; padding: 10px 14px;
+    box-shadow: 0 2px 10px rgba(30,40,80,.06);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ev-title { font-size: 12px; color: #7b8494; font-weight: 700; display: flex; gap: 8px; align-items: center; }
+  .ev-title .tip { font-weight: 400; font-size: 11px; color: #98a1b1; }
+  .ev-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .ev-name { width: 128px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev-name.blue { color: #2f6bff; }
+  .ev-name.red { color: #e5484d; }
+  .ev-bar { flex: 1; height: 12px; background: #eef1f7; border-radius: 6px; overflow: hidden; }
+  .ev-bar > div { height: 100%; border-radius: 6px; transition: width .4s; }
+  .ev-bar.blue > div { background: linear-gradient(90deg, #2f6bff, #7ba0ff); }
+  .ev-bar.red > div { background: linear-gradient(90deg, #e5484d, #f29396); }
+  .ev-val { width: 96px; text-align: right; font-weight: 800; font-size: 12px; color: #3a4456; white-space: nowrap; }
+
+  .pool {
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 2px 10px rgba(30,40,80,.06);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pool-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    background: #f1f4fa; color: #5a6474; border: 1px solid transparent;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .chip:hover { background: #e6ebf5; }
+  .chip.active { border-color: currentColor; box-shadow: inset 0 0 0 1px currentColor; }
+  .pool-tools .search {
+    margin-left: auto;
+    border: 1.5px solid #dfe4ee; border-radius: 8px;
+    padding: 5px 10px; font-size: 13px; width: 140px;
+    background: #fbfcfe; color: #1f2430;
+  }
+  .pool-tools .search:focus { border-color: #2f6bff; }
+  .pool-meta { font-size: 12px; color: #8b93a3; }
+  .pool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+    gap: 7px;
+    max-height: 44vh;
+    overflow-y: auto;
+    padding: 2px;
+  }
+  .hero {
+    border-radius: 9px;
+    border: 1.5px solid #e4e8f1;
+    background: #fbfcfe;
+    padding: 8px 2px 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    cursor: pointer; user-select: none;
+    transition: transform .1s, box-shadow .12s, border-color .12s;
+    position: relative;
+  }
+  .hero:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(30,40,80,.14); border-color: #9fb4d8; }
+  .hero .rbar { width: 70%; height: 3px; border-radius: 2px; background: var(--role); }
+  .hero .hface {
+    width: 46px; height: 46px; border-radius: 50%;
+    object-fit: cover; object-position: center top;
+    border: 2px solid rgba(255,255,255,.9);
+    box-shadow: 0 0 0 2px var(--role), 0 1px 4px rgba(30,40,80,.18);
+    background: #eef1f7; display: block;
+  }
+  .hface-wrap { position: relative; width: 46px; height: 46px; }
+  .hface-wrap .hface { position: absolute; inset: 0; }
+  .hface-fb {
+    position: absolute; inset: 0; border-radius: 50%;
+    display: none; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #fff;
+    background: var(--role); letter-spacing: -1px;
+  }
+  .hface-wrap.noimg .hface { display: none; }
+  .hface-wrap.noimg .hface-fb { display: flex; }
+  .hero .hname { font-size: 12px; font-weight: 700; color: #2a3040; text-align: center; line-height: 1.2; }
+  .hero .rname { font-size: 10px; color: #8b93a3; text-align: center; line-height: 1.3; }
+  .hero .rname b { font-weight: 800; }
+  .hero.unavail {
+    cursor: not-allowed; opacity: .45; filter: grayscale(.9);
+    transform: none !important; box-shadow: none !important;
+  }
+  .hero.unavail::before {
+    content: "锁";
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: rgba(120,130,150,.75);
+    background: rgba(255,255,255,.4); border-radius: 8px;
+  }
+  .hero.used-this::before { content: "×"; color: rgba(229,72,77,.8); }
+  .hero.used-global::before { content: "已"; font-size: 13px; color: rgba(90,100,120,.8); }
+
+  .action-bar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .abtn {
+    padding: 8px 16px; border-radius: 9px; font-size: 13px; font-weight: 700;
+    background: #f1f4fa; color: #3a4456; border: 1px solid #e0e5ef;
+  }
+  .abtn:hover { background: #e6ebf5; }
+  .abtn.primary { background: #2f6bff; color: #fff; border-color: #2f6bff; }
+  .abtn.primary:hover { background: #2459d6; }
+  .abtn.ai { background: #7c5cff; color: #fff; border-color: #7c5cff; }
+  .abtn.ai:hover { background: #6a4dff; }
+  .abtn.danger { background: #fff; color: #e5484d; border-color: #f0c4c6; }
+  .abtn.danger:hover { background: #fdf1f2; }
+  .abtn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ---------- 日志 ---------- */
+  .logwrap {
+    max-width: 1280px; width: 100%; margin: 0 auto; padding: 0 16px 16px;
+  }
+  .log {
+    background: #fff; border-radius: 12px; padding: 10px 14px;
+    box-shadow: 0 2px 10px rgba(30,40,80,.06);
+    font-size: 12.5px; color: #4a5262;
+    max-height: 120px; overflow-y: auto; line-height: 1.9;
+  }
+  .log b.blue { color: #2f6bff; }
+  .log b.red { color: #e5484d; }
+  .log .gtag { color: #98a1b1; margin-right: 4px; }
+
+  /* ---------- 弹窗 ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(18,24,40,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 16px;
+  }
+  .overlay.hidden { display: none; }
+  .modal {
+    background: #fff; border-radius: 16px; padding: 26px;
+    width: 100%; max-width: 460px;
+    box-shadow: 0 20px 60px rgba(10,16,40,.35);
+    max-height: 88vh; overflow-y: auto;
+    animation: up .22s ease;
+  }
+  @keyframes up { from { transform: translateY(14px); opacity: 0; } }
+  .modal.wide { max-width: 680px; }
+  .modal h2 { font-size: 19px; margin-bottom: 6px; }
+  .modal .desc { font-size: 13px; color: #6b7280; line-height: 1.7; }
+  .mrow { margin-top: 14px; }
+  .mrow label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #3a4456; }
+  .mrow input[type=text], .mrow select {
+    width: 100%; border: 1.5px solid #dfe4ee; border-radius: 9px;
+    padding: 9px 12px; font-size: 14px; background: #fbfcfe; color: #1f2430;
+  }
+  .mrow input[type=text]:focus, .mrow select:focus { border-color: #2f6bff; }
+  .mrow .team-hint { font-size: 11.5px; color: #98a1b1; margin-top: 5px; line-height: 1.6; }
+  .checkrow { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #3a4456; margin-top: 12px; }
+  .checkrow input { width: 16px; height: 16px; accent-color: #2f6bff; }
+  .checkrow .tip { font-size: 11.5px; color: #98a1b1; }
+  .mbtns { display: flex; gap: 10px; margin-top: 20px; }
+  .mbtn {
+    flex: 1; padding: 11px 0; border-radius: 10px; font-size: 14.5px; font-weight: 800;
+    background: #2f6bff; color: #fff;
+  }
+  .mbtn:hover { background: #2459d6; }
+  .mbtn.ghost { background: #f1f4fa; color: #3a4456; }
+  .mbtn.ghost:hover { background: #e6ebf5; }
+  .mbtn.win-blue { background: #2f6bff; }
+  .mbtn.win-red { background: #e5484d; }
+  .mbtn.win-red:hover { background: #c93a3f; }
+  .lineup { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .lineup-box { border: 1.5px solid #e4e8f1; border-radius: 12px; padding: 10px 12px; }
+  .lineup-box h4 { font-size: 13px; margin-bottom: 8px; }
+  .lineup-box h4 .blue { color: #2f6bff; }
+  .lineup-box h4 .red { color: #e5484d; }
+  .lineup-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lu-tag {
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px;
+    background: #f6f8fc; border-left: 3px solid var(--role); color: #2a3040;
+  }
+  /* 模型评估块 */
+  .eval-block { margin-top: 14px; border: 1.5px solid #e6e0ff; background: #faf9ff; border-radius: 12px; padding: 12px 14px; }
+  .eval-block h4 { font-size: 13px; color: #6a4dff; margin-bottom: 10px; }
+  .er-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+  .er-name { width: 118px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .er-name.blue { color: #2f6bff; }
+  .er-name.red { color: #e5484d; }
+  .er-bar { flex: 1; height: 14px; background: #ece8fa; border-radius: 7px; overflow: hidden; }
+  .er-bar > div { height: 100%; border-radius: 7px; }
+  .er-bar.blue > div { background: linear-gradient(90deg, #2f6bff, #7ba0ff); }
+  .er-bar.red > div { background: linear-gradient(90deg, #e5484d, #f29396); }
+  .er-score { width: 46px; text-align: right; font-weight: 800; font-size: 14px; }
+  .prob-wrap { margin: 10px 0 4px; }
+  .prob-bar { height: 22px; border-radius: 11px; overflow: hidden; display: flex; font-size: 11px; font-weight: 800; color: #fff; }
+  .prob-bar .pb { display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; }
+  .prob-bar .pb.blue { background: #2f6bff; }
+  .prob-bar .pb.red { background: #e5484d; }
+  .prob-cap { font-size: 11px; color: #8b93a3; margin-top: 4px; }
+  .advice-list { font-size: 12.5px; color: #4a5262; line-height: 1.9; padding-left: 16px; margin-top: 8px; }
+  .advice-list li { margin-bottom: 2px; }
+  .advice-list b { color: #3a4456; }
+  .rules-list { font-size: 13px; color: #4a5262; line-height: 1.9; padding-left: 18px; margin-top: 8px; }
+  .rules-list li { margin-bottom: 6px; }
+  .champ-trophy { font-size: 46px; text-align: center; margin: 8px 0 6px; }
+  .champ-name { text-align: center; font-size: 22px; font-weight: 800; }
+  .champ-score { text-align: center; font-size: 14px; color: #6b7280; margin-top: 4px; }
+  .blind-badge {
+    display: inline-block; background: #3b2f63; color: #d9cff5;
+    font-size: 11px; padding: 3px 10px; border-radius: 20px; margin-left: 6px; font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">KPL BP模拟器<span class="sub">2026全局BanPick · 阵容强度模型</span></div>
+  <div class="spacer"></div>
+  <button class="hbtn" onclick="openRules()">BP规则说明</button>
+  <button class="hbtn" onclick="confirmResetSeries()">重置系列赛</button>
+</header>
+
+<div class="scoreboard" id="scoreboard"></div>
+
+<main>
+  <aside class="team-panel" id="panel0"></aside>
+  <section class="center">
+    <div class="step-banner" id="stepBanner"></div>
+    <div class="ai-panel" id="aiPanel"></div>
+    <div class="eval-strip" id="evalStrip"></div>
+    <div class="pool">
+      <div class="pool-tools" id="poolTools"></div>
+      <div class="pool-meta" id="poolMeta"></div>
+      <div class="pool-grid" id="poolGrid"></div>
+    </div>
+    <div class="action-bar">
+      <button class="abtn ai" onclick="aiStep()">AI推荐一步</button>
+      <button class="abtn primary" onclick="randomStep()">随机一步</button>
+      <button class="abtn" onclick="autoComplete()">自动完成本局</button>
+      <button class="abtn" id="btnUndo" onclick="undoStep()">撤销一步</button>
+      <button class="abtn danger" onclick="confirmResetGame()">重置本局</button>
+    </div>
+  </section>
+  <aside class="team-panel" id="panel1"></aside>
+</main>
+
+<div class="logwrap"><div class="log" id="log"></div></div>
+
+<!-- 开局设置 -->
+<div class="overlay" id="setupOverlay">
+  <div class="modal">
+    <h2>系列赛设置</h2>
+    <div class="desc">2026 KPL赛制：全局BanPick（每队5禁用）+ 巅峰对决 + 阵容强度模型评估。设置完成后即可开始BP。</div>
+    <div class="mrow">
+      <label>队伍名称（可下拉选择2026 KPL夏季赛季后赛十强，获得模型队伍实力加成）</label>
+      <input type="text" id="teamAName" list="kplTeams" value="重庆狼队" maxlength="12">
+    </div>
+    <div class="mrow">
+      <input type="text" id="teamBName" list="kplTeams" value="广州TTG" maxlength="12">
+    </div>
+    <datalist id="kplTeams"></datalist>
+    <div class="mrow">
+      <label>赛制</label>
+      <select id="boSelect">
+        <option value="1">BO1（单局）</option>
+        <option value="3">BO3</option>
+        <option value="5" selected>BO5（常规赛）</option>
+        <option value="7">BO7（含巅峰对决）</option>
+      </select>
+    </div>
+    <div class="checkrow">
+      <input type="checkbox" id="globalBP" checked>
+      <span>全局BanPick<span class="tip">（系列赛中使用过的英雄双方均不可再用）</span></span>
+    </div>
+    <div class="checkrow">
+      <input type="checkbox" id="timerOn" checked>
+      <span>开启倒计时<span class="tip">（超时自动随机选择）</span></span>
+    </div>
+    <div class="mbtns"><button class="mbtn" onclick="startSeries()">开始比赛</button></div>
+  </div>
+</div>
+
+<!-- 本局结果 -->
+<div class="overlay hidden" id="gameOverlay">
+  <div class="modal wide">
+    <h2 id="goTitle">本局BP完成</h2>
+    <div class="desc" id="goDesc"></div>
+    <div class="lineup" id="goLineup"></div>
+    <div class="eval-block" id="goEval"></div>
+    <div class="mbtns">
+      <button class="mbtn ghost" onclick="closeGameModal()">返回修改</button>
+      <button class="mbtn win-blue" id="goWinBlue" onclick="chooseWinner(0)">蓝方获胜</button>
+      <button class="mbtn win-red" id="goWinRed" onclick="chooseWinner(1)">红方获胜</button>
+    </div>
+  </div>
+</div>
+
+<!-- 巅峰对决说明 -->
+<div class="overlay hidden" id="blindOverlay">
+  <div class="modal">
+    <h2>巅峰对决 <span class="blind-badge">GAME 7</span></h2>
+    <div class="desc">
+      双方战至3:3，根据KPL规则进入巅峰对决：<br>
+      1. 本局<b>取消禁用</b>环节；<br>
+      2. 双方进行<b>盲选</b>（选择过程互不可见，允许镜像阵容，BP结束后揭示）；<br>
+      3. 此前使用过的英雄<b>解除限制</b>，可以再次选用。<br><br>
+      <span style="font-size:12px;color:#98a1b1">历史印证：2026夏季赛季后赛共出现5次巅峰对决，S11败者组决赛曾出现完全镜像阵容（双方关羽/赵云/小乔/敖隐/钟馗），由TTG涵的钟馗一钩定音。</span>
+    </div>
+    <div class="mbtns"><button class="mbtn" onclick="beginBlindGame()">开始巅峰对决</button></div>
+  </div>
+</div>
+
+<!-- 冠军 -->
+<div class="overlay hidden" id="champOverlay">
+  <div class="modal">
+    <div class="champ-trophy">🏆</div>
+    <div class="champ-name" id="champName"></div>
+    <div class="champ-score" id="champScore"></div>
+    <div class="mbtns"><button class="mbtn" onclick="location.reload()">再来一场</button></div>
+  </div>
+</div>
+
+<!-- 规则说明 -->
+<div class="overlay hidden" id="rulesOverlay">
+  <div class="modal">
+    <h2>2026 KPL BanPick 规则要点</h2>
+    <ol class="rules-list">
+      <li><b>赛制</b>：KPL采用BO系列赛（常见BO5/BO7），胜负以总局数判定。</li>
+      <li><b>全局BanPick</b>：同一场系列赛中，任何一方<b>使用过</b>的英雄，双方均不能再次选用；被<b>禁用</b>的英雄仅当局有效，下一局解锁。</li>
+      <li><b>单局BP流程</b>（2026规则·双轮禁用）：共20步——<br>
+        ① <b>第一轮禁用</b>：蓝红蓝红交替，双方各禁<b>2</b>个；<br>
+        ② <b>选人前三手</b>：蓝1 → 红2 → 蓝2 → 红1（各选3，对应对抗路/打野/中路）；<br>
+        ③ <b>第二轮禁用</b>：红蓝红蓝红蓝交替，双方再禁<b>3</b>个（针对已亮出的阵容）；<br>
+        ④ <b>选人后两手</b>：红2 → 蓝2（各选2，对应发育路/游走）。</li>
+      <li><b>选人总顺序</b>：蓝1 → 红2 → 蓝2 → 红2 → 蓝2 → 红1（蓝方1-2-2，红方2-2-1，蓝方先选）。</li>
+      <li><b>巅峰对决</b>：BO7战至3:3进入第七局：取消禁用、双方盲选互不可见（允许镜像）、已用英雄解禁。</li>
+      <li><b>蓝红方轮换</b>：系列赛中双方逐局交换蓝红方（本模拟器自动轮换）。</li>
+    </ol>
+    <div class="desc" style="margin-top:8px"><b>阵容强度模型</b>：基于2026 KPL夏季赛季后赛12个系列赛72局真实BP数据训练——英雄强度采用经验贝叶斯收缩胜率（m=8），协同/克制关系来自同队共选与跨队对位统计，胜率预测为逻辑回归（LOO交叉验证）。<br>⚠️ 诚实提示：顶级对局中BP互相抵消，模型对单局胜负的预测力有限（交叉验证准确率约46%），评分与建议更适合作为版本理解与BP思路参考，而非结果保证。</div>
+    <div class="desc" style="margin-top:6px">注：英雄名单以2026夏季赛为参考（127名，含六耳/蚩姹/卢雅那/空空儿等新英雄），未出场英雄无模型数据。</div>
+    <div class="mbtns"><button class="mbtn ghost" onclick="document.getElementById('rulesOverlay').classList.add('hidden')">关闭</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ================= 英雄数据 ================= */
+var ROLES = [
+  { name: '坦克', color: '#64748b' },
+  { name: '战士', color: '#e67e22' },
+  { name: '刺客', color: '#9b59b6' },
+  { name: '法师', color: '#3b82f6' },
+  { name: '射手', color: '#d4a017' },
+  { name: '辅助', color: '#22a06b' }
+];
+
+var HERO_LIST = [
+  '吕布,白起,廉颇,刘邦,项羽,庄周,东皇太一,张飞,牛魔,程咬金,孙策,苏烈,盾山,蒙恬,阿古朵,海诺,梦奇,猪八戒,大禹',
+  '亚瑟,夏侯惇,典韦,曹操,达摩,老夫子,关羽,露娜,花木兰,刘备,宫本武藏,哪吒,杨戬,雅典娜,钟无艳,狂铁,李信,盘古,马超,曜,司空震,云缨,姬小满,赵怀真,亚连,铠,元流之子,夏洛特,影',
+  '兰陵王,阿轲,韩信,李白,孙悟空,赵云,娜可露露,不知火舞,橘右京,百里玄策,裴擒虎,元歌,云中君,澜,镜,暃,司马懿,上官婉儿,六耳',
+  '妲己,安琪拉,貂蝉,王昭君,小乔,周瑜,芈月,高渐离,武则天,干将莫邪,甄姬,张良,米莱狄,女娲,嫦娥,沈梦溪,弈星,杨玉环,西施,海月,金蝉,嬴政,姜子牙,墨子,钟馗,孙权',
+  '后羿,鲁班七号,孙尚香,马可波罗,狄仁杰,李元芳,虞姬,成吉思汗,百里守约,公孙离,黄忠,伽罗,蒙犽,艾琳,戈娅,莱西奥,敖隐,卢雅那,苍,蚩姹',
+  '太乙真人,大乔,蔡文姬,明世隐,鬼谷子,鲁班大师,瑶,刘禅,孙膑,桑启,朵莉亚,少司缘,大司命,空空儿'
+];
+
+var HEROES = [];
+HERO_LIST.forEach(function (names, r) {
+  names.split(',').forEach(function (n) { HEROES.push({ n: n, r: r }); });
+});
+
+/* ================= 模型数据（2026 KPL夏季赛季后赛72局BP训练） =================
+   heroes: 名称 -> [EB强度(0-1), 出场, 禁用, 分路索引(0对抗/1打野/2中路/3发育/4游走), 胜率]
+   syn: [a, b, 同队胜率, 样本]; ctr: [a, b, a克制b对位胜率, 样本]
+   teams: 队伍 -> [代码, EB实力, 场次, 胜场]; coefs: M2逻辑回归系数 */
+var MDATA = {"meta":"基于2026 KPL夏季赛季后赛72局BP数据训练","lanes":["对抗路","打野","中路","发育路","游走"],"heroes":{"赵云":[0.6389,28,20,1,0.679],"盾山":[0.625,8,54,4,0.75],"敖隐":[0.525,32,20,3,0.531],"鲁班大师":[0.5,12,57,4,0.5],"安琪拉":[0.6522,15,10,2,0.733],"钟馗":[0.6,17,15,4,0.647],"关羽":[0.4667,22,28,0,0.455],"曹操":[0.6154,18,5,0,0.667],"海月":[0.4583,16,33,2,0.438],"狂铁":[0.5172,21,12,0,0.524],"空空儿":[0.6923,5,9,4,1.0],"夏洛特":[0.5161,23,4,0,0.522],"小乔":[0.4643,20,18,2,0.45],"沈梦溪":[0.4688,24,10,2,0.458],"张飞":[0.5185,19,10,4,0.526],"戈娅":[0.48,17,20,3,0.471],"裴擒虎":[0.44,17,23,1,0.412],"艾琳":[0.6471,9,1,3,0.778],"苏烈":[0.4333,22,14,4,0.409],"司空震":[0.5882,9,8,0,0.667],"卢雅那":[0.625,8,3,3,0.75],"嫦娥":[0.625,8,2,2,0.75],"大司命":[0.5263,11,11,1,0.545],"六耳":[0.6364,3,6,1,1.0],"阿古朵":[0.5833,4,12,1,0.75],"云缨":[0.5238,13,4,1,0.538],"墨子":[0.5625,8,6,4,0.625],"哪吒":[0.5,6,20,1,0.5],"女娲":[0.5294,9,9,2,0.556],"少司缘":[0.3929,20,10,4,0.35],"武则天":[0.4,17,14,2,0.353],"夏侯惇":[0.5833,4,5,1,0.75],"太乙真人":[0.4583,16,4,4,0.438],"马超":[0.45,12,12,0,0.417],"西施":[0.6,2,4,2,1.0],"公孙离":[0.5,8,10,3,0.5],"宫本武藏":[0.6,2,3,1,1.0],"姜子牙":[0.5,8,9,2,0.5],"不知火舞":[0.4375,8,19,2,0.375],"虞姬":[0.5833,4,1,3,0.75],"苍":[0.4,17,7,3,0.353],"后羿":[0.5455,3,7,3,0.667],"杨戬":[0.4444,10,10,1,0.4],"张良":[0.5556,1,7,4,1.0],"橘右京":[0.4706,9,6,1,0.444],"孙权":[0.5385,5,1,3,0.6],"百里守约":[0.4091,14,6,3,0.357],"吕布":[0.5556,1,4,0,1.0],"海诺":[0.5455,3,2,2,0.667],"项羽":[0.4706,9,4,0,0.444],"蒙恬":[0.5,6,3,0,0.5],"白起":[0.4615,5,11,0,0.4],"铠":[0.4444,10,5,1,0.4],"嬴政":[0.4706,9,2,2,0.444],"芈月":[0.5,2,8,0,0.5],"杨玉环":[0.5556,1,0,4,1.0],"弈星":[0.5556,1,0,2,1.0],"王昭君":[0.5556,1,0,2,1.0],"赵怀真":[0.5,4,4,4,0.5],"狄仁杰":[0.5,6,0,3,0.5],"老夫子":[0.5,2,6,0,0.5],"蚩姹":[0.5,4,2,3,0.5],"元流之子":[0.4583,12,6,1,0.417],"达摩":[0.5,4,0,0,0.5],"鲁班七号":[0.5,2,3,3,0.5],"猪八戒":[0.4286,6,8,1,0.333],"暃":[0.5,2,2,1,0.5],"庄周":[0.5,2,1,4,0.5],"廉颇":[0.5,2,0,4,0.5],"东皇太一":[0.5,0,1,2,0.0],"莱西奥":[0.3889,10,1,3,0.3],"镜":[0.3333,7,12,1,0.143],"梦奇":[0.4167,4,1,1,0.25],"曜":[0.4444,1,0,2,0.0],"甄姬":[0.4444,1,0,2,0.0],"朵莉亚":[0.4,2,3,4,0.0],"元歌":[0.4,2,0,0,0.0],"大乔":[0.4,2,0,2,0.0],"牛魔":[0.4,2,0,4,0.0],"影":[0.3333,7,1,0,0.143],"大禹":[0.3636,3,0,4,0.0]},"syn":[["嫦娥","赵云",1.0,4],["曹操","钟馗",1.0,4],["盾山","艾琳",0.833,6],["小乔","赵云",0.833,6],["敖隐","曹操",0.8,5],["张飞","赵云",0.8,5],["赵云","钟馗",0.8,5],["狂铁","赵云",0.75,8],["夏洛特","张飞",0.75,8],["戈娅","狂铁",0.75,4],["安琪拉","少司缘",0.75,4],["大司命","安琪拉",0.75,4]],"ctr":[["曹操","武则天",1.0,4],["安琪拉","沈梦溪",1.0,4],["曹操","夏洛特",1.0,3],["赵云","夏洛特",1.0,3],["赵云","少司缘",1.0,3],["鲁班大师","沈梦溪",1.0,3],["赵云","百里守约",1.0,3],["艾琳","戈娅",0.8,5],["敖隐","鲁班大师",0.8,5],["艾琳","沈梦溪",0.8,5],["艾琳","苏烈",0.8,5],["敖隐","武则天",0.75,4]],"teams":{"重庆狼队":["WOL",0.5652,19,11],"成都AG超玩会":["AG",0.5625,12,7],"广州TTG":["TTG",0.5556,32,18],"上海EDG.M":["EDG",0.5455,18,10],"RW侠":["RW",0.5,10,5],"滔搏TES.A":["TES",0.4545,18,8],"北京JDG":["JDG",0.4545,18,8],"北京WB":["WB",0.4545,7,3],"杭州LGD.NBW":["LGD",0.3333,5,1],"南京Hero久竞":["HER",0.3333,5,1]},"coefs":{"w0":-0.1691,"wh":3.0936,"wt":0.7741}};
+
+var LANES = MDATA.lanes;
+var ROLE2LANE = [0, 0, 1, 2, 3, 4];  // 六类职业 -> 默认分路（无数据英雄兜底）
+var SYN = {}, CTR = {};
+MDATA.syn.forEach(function (p) { SYN[p[0] + '|' + p[1]] = p; SYN[p[1] + '|' + p[0]] = p; });
+MDATA.ctr.forEach(function (p) { CTR[p[0] + '|' + p[1]] = p; });
+
+function heroM(n) { return MDATA.heroes[n] || null; }
+function eb(n) { var m = MDATA.heroes[n]; return m ? m[0] : 0.5; }
+function laneIdx(n) { var m = MDATA.heroes[n]; return m ? m[3] : ROLE2LANE[roleOf(n)]; }
+function synOf(a, b) { return SYN[a + '|' + b] || null; }
+function ctrOf(a, b) { return CTR[a + '|' + b] || null; }  // a 克制 b
+function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+
+var TIER = [
+  { name: 'T0', color: '#d4a017' },
+  { name: 'T1', color: '#2f6bff' },
+  { name: 'T2', color: '#64748b' },
+  { name: 'T3', color: '#98a1b1' }
+];
+function tierOf(v) { return v >= 0.6 ? 0 : v >= 0.53 ? 1 : v >= 0.47 ? 2 : 3; }
+
+/* ================= 全局状态 ================= */
+var S = null;          // 系列赛状态
+var filterRole = -1;   // -1 全部
+var filterText = '';
+var timerInt = null;   // 倒计时 interval
+var historyStack = []; // 撤销栈（当前局）
+
+function winsNeeded(bo) { return Math.ceil(bo / 2); }
+
+function newSeries() {
+  return {
+    bo: 7,
+    teams: ['蓝色风暴', '红色烈焰'],
+    teamEB: [null, null],   // 队伍模型实力（真实KPL队伍才有）
+    globalBP: true,
+    timerOn: true,
+    score: [0, 0],
+    finished: 0,          // 已结束局数
+    usedHeroes: [],       // 全局已用英雄 [{n, game, team}]
+    log: [],
+    game: null
+  };
+}
+
+function buildSteps(blind) {
+  var steps = [];
+  if (!blind) {
+    /* 2026规则：双轮禁用（分段BP）
+       第一轮禁用：蓝红蓝红（各2）
+       选人前三手：蓝1 → 红2 → 蓝2 → 红1（各3：对抗路/打野/中路）
+       第二轮禁用：红蓝红蓝红蓝（各3，红方先手）
+       选人后两手：红2 → 蓝2（各2：发育路/游走） */
+    ['blue', 'red', 'blue', 'red'].forEach(function (s) { steps.push({ type: 'ban', side: s, ph: 'ban1' }); });
+    ['blue', 'red', 'red', 'blue', 'blue', 'red'].forEach(function (s) { steps.push({ type: 'pick', side: s, ph: 'pick1' }); });
+    ['red', 'blue', 'red', 'blue', 'red', 'blue'].forEach(function (s) { steps.push({ type: 'ban', side: s, ph: 'ban2' }); });
+    ['red', 'blue', 'blue', 'red'].forEach(function (s) { steps.push({ type: 'pick', side: s, ph: 'pick2' }); });
+  } else {
+    ['blue', 'red', 'red', 'blue', 'blue', 'red', 'red', 'blue', 'blue', 'red'].forEach(function (s) { steps.push({ type: 'pick', side: s }); });
+  }
+  return steps;
+}
+
+function isBlindGame() {
+  return S.bo === 7 && S.score[0] === 3 && S.score[1] === 3;
+}
+
+function newGame() {
+  var gameNo = S.finished + 1;
+  return {
+    no: gameNo,
+    blueTeam: (gameNo - 1) % 2 === 0 ? 0 : 1, // 单数局队伍0在蓝方
+    blind: isBlindGame(),
+    bans: [[], []],
+    picks: [[], []],
+    steps: buildSteps(isBlindGame()),
+    stepIdx: 0,
+    done: false
+  };
+}
+
+function sideTeam(side) { return side === 'blue' ? S.game.blueTeam : 1 - S.game.blueTeam; }
+function teamSide(team) { return S.game.blueTeam === team ? 'blue' : 'red'; }
+function curStep() { var g = S.game; return (!g || g.done) ? null : g.steps[g.stepIdx]; }
+
+/* ================= 可用性判断 ================= */
+function heroState(n) {
+  var g = S.game;
+  var step = curStep();
+  var meTeam = step ? sideTeam(step.side) : 0;
+  for (var t = 0; t < 2; t++) {
+    if (g.bans[t].indexOf(n) >= 0) return 'banned';
+  }
+  if (g.blind) {
+    // 盲选：只阻止己方重复，允许与对方镜像
+    if (g.picks[meTeam].indexOf(n) >= 0) return 'picked';
+  } else {
+    for (var t2 = 0; t2 < 2; t2++) {
+      if (g.picks[t2].indexOf(n) >= 0) return 'picked';
+    }
+  }
+  if (S.globalBP && !g.blind) {
+    for (var i = 0; i < S.usedHeroes.length; i++) {
+      if (S.usedHeroes[i].n === n) return 'global';
+    }
+  }
+  return 'ok';
+}
+function isAvailable(n) { return heroState(n) === 'ok'; }
+
+/* ================= 阵容评估模型 ================= */
+// 单队阵容评估：EB强度合计 + 队内协同 - 被克制 + 克制对方
+function teamEval(picks, enemyPicks) {
+  var ebSum = 0, syn = [], ctrUp = [], ctrDown = [];
+  picks.forEach(function (h) { ebSum += eb(h); });
+  for (var i = 0; i < picks.length; i++) {
+    for (var j = i + 1; j < picks.length; j++) {
+      var s = synOf(picks[i], picks[j]);
+      if (s) syn.push(s);
+    }
+  }
+  if (enemyPicks && enemyPicks.length) {
+    picks.forEach(function (h) {
+      enemyPicks.forEach(function (e) {
+        var c1 = ctrOf(h, e);
+        if (c1) ctrUp.push(c1);
+        var c2 = ctrOf(e, h);
+        if (c2) ctrDown.push(c2);
+      });
+    });
+  }
+  var synAdj = 0, ctrAdj = 0;
+  syn.forEach(function (s) { synAdj += (s[2] - 0.5); });
+  ctrUp.forEach(function (c) { ctrAdj += (c[2] - 0.5); });
+  ctrDown.forEach(function (c) { ctrAdj -= (c[2] - 0.5); });
+  var adj = ebSum + synAdj * 0.6 + ctrAdj * 0.5;
+  var score = Math.max(5, Math.min(99, Math.round(50 + (adj - 2.5) * 75)));
+  return { ebSum: ebSum, adj: adj, score: score, syn: syn, ctrUp: ctrUp, ctrDown: ctrDown, n: picks.length };
+}
+
+// 胜率预测（M2逻辑回归：蓝方效应 + 阵容强度差 + 队伍实力差）
+function winProb(blueEval, redEval, teamDiff) {
+  var z = MDATA.coefs.w0 + MDATA.coefs.wh * (blueEval.adj - redEval.adj) + MDATA.coefs.wt * (teamDiff || 0);
+  return sigmoid(z);
+}
+
+function teamDiffNow() {
+  var g = S.game;
+  if (!g) return { td: 0, real: false };
+  var a = S.teamEB[g.blueTeam], b = S.teamEB[1 - g.blueTeam];
+  if (a == null || b == null) return { td: 0, real: false };
+  return { td: a - b, real: true };
+}
+
+/* ================= AI建议 ================= */
+function banSuggestions() {
+  var g = S.game, step = curStep();
+  if (!step) return [];
+  var meT = sideTeam(step.side), enT = 1 - meT;
+  var myPicks = g.picks[meT], enPicks = g.picks[enT];
+  var list = [];
+  HEROES.forEach(function (h) {
+    if (!isAvailable(h.n)) return;
+    var m = heroM(h.n);
+    if (!m) return; // 无数据英雄不建议禁用
+    var v = (m[0] - 0.5) * 2 + (m[2] / 67) * 0.8;  // 强度 + 季后赛禁用热度（67局口径）
+    var reasons = [];
+    var t = tierOf(m[0]);
+    reasons.push('版本强度' + Math.round(m[0] * 100) + '%（' + TIER[t].name + '）');
+    if (m[2] >= 10) reasons.push('季后赛被禁' + m[2] + '次');
+    myPicks.forEach(function (mp) {
+      var c = ctrOf(h.n, mp);
+      if (c) { v += 0.55; reasons.push('克制我方' + mp + '（对位胜率' + Math.round(c[2] * 100) + '%）'); }
+    });
+    enPicks.forEach(function (ep) {
+      var s = synOf(h.n, ep);
+      if (s) { v += 0.4; reasons.push('与敌方' + ep + '高协同（同队胜率' + Math.round(s[2] * 100) + '%）'); }
+    });
+    list.push({ n: h.n, v: v, reasons: reasons });
+  });
+  list.sort(function (a, b) { return b.v - a.v; });
+  return list.slice(0, 3);
+}
+
+function pickSuggestions() {
+  var g = S.game, step = curStep();
+  if (!step) return [];
+  var meT = sideTeam(step.side), enT = 1 - meT;
+  var own = g.picks[meT];
+  var en = g.blind ? [] : g.picks[enT];   // 盲选：对手信息不可见
+  var slotLane = own.length;              // 第X手 = 分路位置（选用按分路顺序）
+  var list = [];
+  HEROES.forEach(function (h) {
+    if (!isAvailable(h.n)) return;
+    var m = heroM(h.n);
+    var v = 0, reasons = [];
+    if (m) {
+      var t = tierOf(m[0]);
+      v += (m[0] - 0.5) * 2.2;
+      reasons.push('版本强度' + Math.round(m[0] * 100) + '%（' + TIER[t].name + '）');
+    } else {
+      reasons.push('无版本数据（按均势50%计）');
+    }
+    // 分路匹配（KPL选人按分路顺序：第X手=第X分路，不匹配则明显降权）
+    if (m && laneIdx(h.n) === slotLane) {
+      v += 0.45;
+      reasons.push('匹配本手' + LANES[slotLane] + '位');
+    }
+    // 与己方已选协同
+    own.forEach(function (op) {
+      var s = synOf(h.n, op);
+      if (s) { v += 0.6 * (s[2] - 0.5) * 2; reasons.push('与' + op + '协同（同队胜率' + Math.round(s[2] * 100) + '%）'); }
+    });
+    // 克制 / 被克制（盲选不适用）
+    en.forEach(function (ep) {
+      var c1 = ctrOf(h.n, ep);
+      if (c1) { v += 0.5 * (c1[2] - 0.5) * 2; reasons.push('克制敌方' + ep + '（对位胜率' + Math.round(c1[2] * 100) + '%）'); }
+      var c2 = ctrOf(ep, h.n);
+      if (c2) { v -= 0.4 * (c2[2] - 0.5) * 2; reasons.push('⚠ 被敌方' + ep + '克制'); }
+    });
+    list.push({ n: h.n, v: v, reasons: reasons });
+  });
+  list.sort(function (a, b) { return b.v - a.v; });
+  return list.slice(0, 4);
+}
+
+function aiStep() {
+  if (!S || !S.game || S.game.done) return;
+  var step = curStep();
+  var sug = step.type === 'ban' ? banSuggestions() : pickSuggestions();
+  if (sug.length) applyHero(sug[0].n);
+  else randomStep();
+}
+
+/* ================= BP 操作 ================= */
+function pushHistory() {
+  historyStack.push(JSON.stringify({ game: S.game, log: S.log }));
+  if (historyStack.length > 200) historyStack.shift();
+}
+
+function applyHero(n) {
+  var g = S.game;
+  if (g.done) return;
+  var step = g.steps[g.stepIdx];
+  if (!step || !isAvailable(n)) return;
+  pushHistory();
+  var t = sideTeam(step.side);
+  var list = step.type === 'ban' ? g.bans[t] : g.picks[t];
+  list.push(n);
+  var sideName = step.side === 'blue' ? '蓝方' : '红方';
+  addLog('第' + g.no + '局 ' + sideName + ' ' + (step.type === 'ban' ? '禁用' : '选择') + '：<b class="' + step.side + '">' + n + '</b>');
+  g.stepIdx++;
+  stopTimer();
+  if (g.stepIdx >= g.steps.length) {
+    g.done = true;
+    renderAll();
+    setTimeout(showGameResult, 400);
+  } else {
+    renderAll();
+    startTimer();
+  }
+}
+
+function randomStep() {
+  var g = S.game;
+  if (!g || g.done) return;
+  var avail = HEROES.filter(function (h) { return isAvailable(h.n); });
+  if (!avail.length) return;
+  applyHero(avail[Math.floor(Math.random() * avail.length)].n);
+}
+
+function autoComplete() {
+  if (!S.game || S.game.done) return;
+  var guard = 0;
+  while (S.game && !S.game.done && guard < 25) { randomStep(); guard++; }
+}
+
+function undoStep() {
+  if (!historyStack.length || !S.game) return;
+  var snap = JSON.parse(historyStack.pop());
+  S.game = snap.game;
+  S.log = snap.log;
+  stopTimer();
+  document.getElementById('gameOverlay').classList.add('hidden');
+  renderAll();
+  if (!S.game.done && S.game.stepIdx < S.game.steps.length) startTimer();
+}
+
+function addLog(html) {
+  S.log.push(html);
+  if (S.log.length > 160) S.log.shift();
+}
+
+/* ================= 倒计时 ================= */
+function stepDuration(step) { return step.type === 'ban' ? 35 : 45; }
+
+function startTimer() {
+  stopTimer();
+  if (!S || !S.timerOn || !S.game || S.game.done) return;
+  var step = S.game.steps[S.game.stepIdx];
+  if (!step) return;
+  var total = stepDuration(step);
+  var left = total;
+  renderTimer(left, total);
+  timerInt = setInterval(function () {
+    left--;
+    renderTimer(left, total);
+    if (left <= 0) {
+      stopTimer();
+      randomStep();
+    }
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInt) { clearInterval(timerInt); timerInt = null; }
+}
+
+function renderTimer(left, total) {
+  var num = document.getElementById('timerNum');
+  var bar = document.getElementById('timerBarFill');
+  if (!num || !bar) return;
+  num.textContent = Math.max(0, left);
+  var pct = Math.max(0, left / total * 100);
+  bar.style.width = pct + '%';
+  var warn = left <= 10;
+  num.classList.toggle('warn', warn);
+  bar.classList.toggle('warn', warn);
+}
+
+/* ================= 渲染 ================= */
+function renderAll() {
+  renderScoreboard();
+  if (!S || !S.game) { renderLog(); return; }
+  renderPanels();
+  renderBanner();
+  renderAIPanel();
+  renderEvalStrip();
+  renderPool();
+  renderLog();
+  var btnUndo = document.getElementById('btnUndo');
+  if (btnUndo) btnUndo.disabled = !historyStack.length;
+}
+
+function renderScoreboard() {
+  var need = winsNeeded(S.bo);
+  var g = S.game;
+  var el = document.getElementById('scoreboard');
+  var html = '';
+  for (var t = 0; t < 2; t++) {
+    var side = g ? teamSide(t) : null;
+    var dots = '';
+    for (var i = 0; i < need; i++) {
+      dots += '<div class="wdot ' + (i < S.score[t] ? (t === 0 ? 'on-blue' : 'on-red') : '') + '"></div>';
+    }
+    var right = t === 1 ? ' right' : '';
+    html += '<div class="sb-team' + right + '">' +
+      (side ? '<span class="sb-side ' + side + '">' + (side === 'blue' ? '本局蓝方' : '本局红方') + '</span>' : '') +
+      '<span class="sb-name">' + esc(S.teams[t]) + '</span>' +
+      '<div class="win-dots">' + dots + '</div>' +
+      '</div>';
+    if (t === 0) {
+      html += '<div class="sb-score">' + S.score[0] + ' : ' + S.score[1] + '</div>' +
+        '<div class="sb-mid"><span class="sb-bo">BO' + S.bo + '</span>' +
+        '<span class="sb-game">第 ' + (g ? g.no : S.finished + 1) + ' 局' +
+        (g && g.blind ? ' · 巅峰对决' : '') + '</span></div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+function renderPanels() {
+  var g = S.game;
+  for (var t = 0; t < 2; t++) {
+    var el = document.getElementById('panel' + t);
+    var side = teamSide(t);
+    var isTurn = !g.done && g.steps[g.stepIdx] && g.steps[g.stepIdx].side === side;
+    var bans = '';
+    if (!g.blind) {
+      for (var b = 0; b < 5; b++) {
+        var n = g.bans[t][b];
+        bans += '<div class="slot ban-slot ban' + (n ? ' filled' : '') + '"' +
+          (n ? ' style="--role:' + ROLES[roleOf(n)].color + '"' : '') + '><span>' + (n || '禁用') + '</span></div>';
+      }
+    }
+    var picks = '';
+    for (var p = 0; p < 5; p++) {
+      var n2 = g.picks[t][p];
+      var hidden = g.blind && !g.done;
+      if (hidden) {
+        picks += '<div class="slot hidden-slot"><span>' + (n2 ? '? 已选' : LANES[p]) + '</span></div>';
+      } else {
+        picks += '<div class="slot' + (n2 ? ' filled' : '') + '"' +
+          (n2 ? ' style="--role:' + ROLES[roleOf(n2)].color + '"' : '') + '><span>' + (n2 || LANES[p]) + '</span></div>';
+      }
+    }
+    el.className = 'team-panel' + (isTurn ? ' ' + side + '-active' : '');
+    el.innerHTML =
+      '<div class="tp-head"><span class="tp-name">' + esc(S.teams[t]) + '</span>' +
+      '<span class="tp-side ' + side + '">' + (side === 'blue' ? '蓝方' : '红方') + '</span></div>' +
+      (g.blind
+        ? '<div class="tp-label"><span>巅峰对决 · 无禁用 · 盲选</span><span class="line"></span></div>'
+        : '<div class="tp-label"><span>禁用 (5)</span><span class="line"></span></div>' +
+          '<div class="slots five">' + bans + '</div>') +
+      '<div class="tp-label"><span>选用 (5) · 按分路顺序</span><span class="line"></span></div>' +
+      '<div class="slots five">' + picks + '</div>';
+  }
+}
+
+function renderBanner() {
+  var g = S.game;
+  var el = document.getElementById('stepBanner');
+  if (g.done) {
+    el.className = 'step-banner';
+    el.innerHTML = '<div class="sb-main"><div class="sb-phase">BP流程</div>' +
+      '<div class="sb-actor"><span class="neutral">本局BP已完成，请查看模型评估并确认比赛结果</span></div></div>';
+    return;
+  }
+  var step = g.steps[g.stepIdx];
+  var side = step.side;
+  var t = sideTeam(side);
+  var isBan = step.type === 'ban';
+  var phase;
+  if (g.blind) phase = '巅峰对决 · 盲选';
+  else if (step.ph === 'ban1') phase = '禁用第一轮 ' + (g.stepIdx + 1) + '/4';
+  else if (step.ph === 'pick1') phase = '选人前三手 ' + (g.stepIdx - 3) + '/6';
+  else if (step.ph === 'ban2') phase = '禁用第二轮 ' + (g.stepIdx - 9) + '/6';
+  else if (step.ph === 'pick2') phase = '选人后两手 ' + (g.stepIdx - 15) + '/4';
+  else phase = 'BP进行中';
+  el.className = 'step-banner side-' + side;
+  el.innerHTML =
+    '<div class="sb-main"><div class="sb-phase">' + phase + '</div>' +
+    '<div class="sb-actor"><span class="' + side + '">' + (side === 'blue' ? '蓝方' : '红方') + ' · ' + esc(S.teams[t]) +
+    '</span> 正在' + (isBan ? '禁用' : '选择') + '英雄' +
+    (g.blind ? '<span class="blind-badge">盲选</span>' : '') + '</div></div>' +
+    (S.timerOn
+      ? '<div class="timer-wrap"><div class="timer-bar"><div id="timerBarFill"></div></div>' +
+        '<div class="timer-num" id="timerNum">' + stepDuration(step) + '</div></div>'
+      : '');
+}
+
+function renderAIPanel() {
+  var el = document.getElementById('aiPanel');
+  var g = S.game;
+  var step = curStep();
+  if (!step) {
+    el.innerHTML = '<div class="ai-head">🧠 AI建议<span class="ai-note">基于72局真实BP训练的阵容强度模型</span></div>' +
+      '<div class="ai-body"><span class="ai-empty">本局BP已完成</span></div>';
+    return;
+  }
+  var isBan = step.type === 'ban';
+  var sug = isBan ? banSuggestions() : pickSuggestions();
+  var t = sideTeam(step.side);
+  var chips = '';
+  sug.forEach(function (s, i) {
+    chips += '<button class="ai-chip" onclick="heroClick(\'' + s.n + '\')">' +
+      '<span class="ai-rank">#' + (i + 1) + '</span><b>' + s.n + '</b>' +
+      '<span class="ai-reason">' + s.reasons.slice(0, 2).join(' · ') + '</span></button>';
+  });
+  var note = g.blind ? '盲选：对手不可见，建议基于版本强度与己方协同'
+    : (isBan ? '优先禁用版本强势与克制我方体系的英雄' : '综合版本强度、协同、克制与本手分路');
+  el.innerHTML = '<div class="ai-head">🧠 AI建议 · ' + (isBan ? '禁用推荐' : '选用推荐') +
+    '（' + (step.side === 'blue' ? '蓝方' : '红方') + ' ' + esc(S.teams[t]) + '）' +
+    '<span class="ai-note">' + note + ' · 点击采纳</span></div>' +
+    '<div class="ai-body">' + (chips || '<span class="ai-empty">暂无可推荐英雄</span>') + '</div>';
+}
+
+function renderEvalStrip() {
+  var el = document.getElementById('evalStrip');
+  var g = S.game;
+  if (!g) { el.innerHTML = ''; return; }
+  var bt = g.blueTeam;
+  var bEval = teamEval(g.picks[bt], g.blind ? [] : g.picks[1 - bt]);
+  var rEval = teamEval(g.picks[1 - bt], g.blind ? [] : g.picks[bt]);
+  function row(name, e, side, teamIdx) {
+    var lbl = (side === 'blue' ? '蓝方' : '红方') + ' · ' + name;
+    var info = e.n ? (e.n + '人 均值' + (e.n ? Math.round(e.ebSum / e.n * 100) : 0) + '%') : '尚未选人';
+    var synN = e.syn.length ? ' · 协同×' + e.syn.length : '';
+    return '<div class="ev-row"><span class="ev-name ' + side + '">' + esc(lbl) + '</span>' +
+      '<div class="ev-bar ' + side + '"><div style="width:' + (g.done ? e.score : (e.n ? e.score : 0)) + '%"></div></div>' +
+      '<span class="ev-val">' + (g.done ? e.score + '分' : info + synN) + '</span></div>';
+  }
+  var title = g.done ? '阵容强度评分（模型）' : '实时阵容强度（选人中）';
+  el.innerHTML = '<div class="ev-title">' + title +
+    '<span class="tip">' + (g.done ? '评分含协同与克制修正' : '均值=已选英雄EB强度均值，协同为模型识别的高胜率组合') + '</span></div>' +
+    row(S.teams[bt], bEval, 'blue') +
+    row(S.teams[1 - bt], rEval, 'red');
+}
+
+function renderPool() {
+  // 过滤条
+  var tools = document.getElementById('poolTools');
+  var chips = '<button class="chip' + (filterRole === -1 ? ' active' : '') + '" style="color:#3a4456" onclick="setRole(-1)">全部 ' + HEROES.length + '</button>';
+  ROLES.forEach(function (r, i) {
+    var cnt = HEROES.filter(function (h) { return h.r === i; }).length;
+    chips += '<button class="chip' + (filterRole === i ? ' active' : '') + '" style="color:' + r.color + '" onclick="setRole(' + i + ')">' +
+      '<span class="dot" style="background:' + r.color + '"></span>' + r.name + ' ' + cnt + '</button>';
+  });
+  chips += '<input class="search" type="text" placeholder="搜索英雄…" value="' + esc(filterText) + '" oninput="setSearch(this.value)">';
+  tools.innerHTML = chips;
+
+  var availCnt = 0;
+  var shown = 0;
+  var grid = '';
+  HEROES.forEach(function (h) {
+    var st = heroState(h.n);
+    if (st === 'ok') availCnt++;
+    if (filterRole !== -1 && h.r !== filterRole) return;
+    if (filterText && h.n.indexOf(filterText) < 0) return;
+    shown++;
+    var cls = st === 'ok' ? '' : (st === 'global' ? 'unavail used-global' : 'unavail used-this');
+    var m = heroM(h.n);
+    var sub = ROLES[h.r].name;
+    if (m) {
+      var t = tierOf(m[0]);
+      sub += ' · <b style="color:' + TIER[t].color + '">' + TIER[t].name + ' ' + Math.round(m[0] * 100) + '%</b>';
+    }
+    var title = h.n + ' · ' + ROLES[h.r].name + (m ? ' · ' + LANES[m[3]] : '') +
+      (m ? ' · 模型强度' + Math.round(m[0] * 100) + '%（出场' + m[1] + ' 禁用' + m[2] + '）' : ' · 无版本数据') +
+      ' · ' + (st === 'ok' ? '可选择' : st === 'banned' ? '本局已被禁用' : st === 'picked' ? '本局已被选用' : '系列赛中已被使用（全局BanPick）');
+    grid += '<div class="hero ' + cls + '" style="--role:' + ROLES[h.r].color + '" title="' + title + '" onclick="heroClick(\'' + h.n + '\')">' +
+      '<div class="rbar"></div>' + faceHTML(h.n) + '<div class="hname">' + h.n + '</div><div class="rname">' + sub + '</div></div>';
+  });
+  document.getElementById('poolGrid').innerHTML = grid;
+  document.getElementById('poolMeta').textContent = '可选英雄 ' + availCnt + ' / ' + HEROES.length + '　（显示 ' + shown + ' 个' +
+    (S.globalBP ? '，全局BanPick：已使用英雄自动锁定' : '') + '）　强度=模型EB胜率 T0≥60% T1≥53% T2≥47%';
+}
+
+/* 官方英雄头像（ID 来源：pvp.qq.com herolist.json，头像 CDN：game.gtimg.cn） */
+var HERO_IMG_IDS = {"吕布":123,"白起":120,"廉颇":105,"刘邦":149,"项羽":135,"庄周":113,"东皇太一":187,"张飞":171,"牛魔":168,"程咬金":144,"孙策":510,"苏烈":194,"盾山":509,"蒙恬":527,"阿古朵":533,"海诺":563,"梦奇":198,"猪八戒":511,"大禹":188,"亚瑟":166,"夏侯惇":126,"典韦":129,"曹操":128,"达摩":134,"老夫子":139,"关羽":140,"露娜":146,"花木兰":154,"刘备":170,"宫本武藏":130,"哪吒":180,"杨戬":178,"雅典娜":183,"钟无艳":117,"狂铁":503,"李信":507,"盘古":529,"马超":518,"曜":522,"司空震":537,"云缨":538,"姬小满":564,"赵怀真":544,"亚连":514,"铠":193,"元流之子":581,"夏洛特":536,"影":558,"兰陵王":153,"阿轲":116,"韩信":150,"李白":131,"孙悟空":167,"赵云":107,"娜可露露":162,"不知火舞":157,"橘右京":163,"百里玄策":195,"裴擒虎":502,"元歌":125,"云中君":506,"澜":528,"镜":531,"暃":542,"司马懿":137,"上官婉儿":513,"六耳":549,"妲己":109,"安琪拉":142,"貂蝉":141,"王昭君":152,"小乔":106,"周瑜":124,"芈月":121,"高渐离":115,"武则天":136,"干将莫邪":182,"甄姬":127,"张良":156,"米莱狄":504,"女娲":179,"嫦娥":515,"沈梦溪":312,"弈星":197,"杨玉环":176,"西施":523,"海月":521,"金蝉":540,"嬴政":110,"姜子牙":148,"墨子":108,"钟馗":175,"孙权":151,"后羿":169,"鲁班七号":112,"孙尚香":111,"马可波罗":132,"狄仁杰":133,"李元芳":173,"虞姬":174,"成吉思汗":177,"百里守约":196,"公孙离":199,"黄忠":192,"伽罗":508,"蒙犽":524,"艾琳":155,"戈娅":548,"莱西奥":545,"敖隐":519,"卢雅那":547,"苍":177,"蚩姹":172,"太乙真人":186,"大乔":191,"蔡文姬":184,"明世隐":501,"鬼谷子":189,"鲁班大师":525,"瑶":505,"刘禅":114,"孙膑":118,"桑启":534,"朵莉亚":159,"少司缘":577,"大司命":517,"空空儿":550};
+
+function faceHTML(name) {
+  var id = HERO_IMG_IDS[name];
+  var url = id ? 'https://game.gtimg.cn/images/yxzj/img201606/heroimg/' + id + '/' + id + '.jpg' : '';
+  return '<div class="hface-wrap" data-n="' + esc(name) + '">' +
+    (url ? '<img class="hface" loading="lazy" src="' + url + '" alt="' + esc(name) + '" ' +
+      'onerror="this.parentNode.classList.add(\'noimg\')">' : '') +
+    '<span class="hface-fb">' + esc(name.slice(0, 2)) + '</span></div>';
+}
+
+function renderLog() {
+  var el = document.getElementById('log');
+  var items = S.log.slice().reverse();
+  el.innerHTML = items.length ? items.join('<br>') : '<span style="color:#a5aebd">暂无BP记录</span>';
+}
+
+function roleOf(n) {
+  for (var i = 0; i < HEROES.length; i++) if (HEROES[i].n === n) return HEROES[i].r;
+  return 0;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ================= 交互事件 ================= */
+function heroClick(n) {
+  if (!S || !S.game) return;
+  var g = S.game;
+  if (g.done) return;
+  var st = heroState(n);
+  if (st !== 'ok') { flashMsg(n, st); return; }
+  applyHero(n);
+}
+
+function flashMsg(n, st) {
+  var meta = document.getElementById('poolMeta');
+  var old = meta.textContent;
+  meta.textContent = '「' + n + '」' + (st === 'banned' ? '本局已被禁用' : st === 'picked' ? '本局已被选用' : '系列赛中已被使用（全局BanPick）') + '，无法选择';
+  meta.style.color = '#e5484d';
+  setTimeout(function () { meta.textContent = old; meta.style.color = ''; }, 1500);
+}
+
+function setRole(i) { filterRole = i; renderPool(); }
+function setSearch(v) { filterText = v.trim(); renderPool(); }
+
+/* ================= 流程控制 ================= */
+function fillTeamDatalist() {
+  var dl = document.getElementById('kplTeams');
+  var html = '';
+  Object.keys(MDATA.teams).forEach(function (name) {
+    var t = MDATA.teams[name];
+    html += '<option value="' + esc(name) + '">' + t[0] + ' · 模型实力' + Math.round(t[1] * 100) + '%（' + t[3] + '胜' + t[2] + '场）</option>';
+  });
+  dl.innerHTML = html;
+}
+
+function startSeries() {
+  var a = document.getElementById('teamAName').value.trim() || '蓝色风暴';
+  var b = document.getElementById('teamBName').value.trim() || '红色烈焰';
+  S = newSeries();
+  S.teams = [a, b];
+  S.teamEB = [heroTeamEB(a), heroTeamEB(b)];
+  S.bo = parseInt(document.getElementById('boSelect').value, 10);
+  S.globalBP = document.getElementById('globalBP').checked;
+  S.timerOn = document.getElementById('timerOn').checked;
+  document.getElementById('setupOverlay').classList.add('hidden');
+  startGame();
+}
+
+function heroTeamEB(name) {
+  var t = MDATA.teams[name];
+  return t ? t[1] : null;
+}
+
+function startGame() {
+  historyStack = [];
+  if (isBlindGame()) {
+    renderAll();
+    document.getElementById('blindOverlay').classList.remove('hidden');
+    return;
+  }
+  S.game = newGame();
+  addLog('—— 第' + S.game.no + '局开始（' + esc(S.teams[S.game.blueTeam]) + ' 执蓝方）——');
+  renderAll();
+  startTimer();
+}
+
+function beginBlindGame() {
+  document.getElementById('blindOverlay').classList.add('hidden');
+  S.game = newGame();
+  addLog('—— 巅峰对决！第' + S.game.no + '局：无禁用 · 盲选 · 已用英雄解禁 ——');
+  renderAll();
+  startTimer();
+}
+
+/* ---------- 本局结果 + 模型评估 ---------- */
+function showGameResult() {
+  var g = S.game;
+  var bt = g.blueTeam;
+  var bEval = teamEval(g.picks[bt], g.picks[1 - bt]);
+  var rEval = teamEval(g.picks[1 - bt], g.picks[bt]);
+  var tdi = teamDiffNow();
+  var pBlue = winProb(bEval, rEval, tdi.td);
+
+  // 记入日志
+  addLog('第' + g.no + '局模型评估：<b class="blue">蓝方' + bEval.score + '分</b> / <b class="red">红方' + rEval.score + '分</b>，预测蓝方胜率 ' + Math.round(pBlue * 100) + '%');
+
+  // 阵容列表
+  var box = document.getElementById('goLineup');
+  var html = '';
+  for (var t = 0; t < 2; t++) {
+    var side = teamSide(t);
+    html += '<div class="lineup-box"><h4><span class="' + side + '">' + (side === 'blue' ? '蓝方' : '红方') + ' · ' + esc(S.teams[t]) + '</span> 阵容</h4><div class="lineup-list">';
+    g.picks[t].forEach(function (n, i) {
+      html += '<span class="lu-tag" style="--role:' + ROLES[roleOf(n)].color + '">' + n + '<small style="color:#8b93a3"> ' + LANES[i] + '</small></span>';
+    });
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
+
+  // 评估块
+  var ev = document.getElementById('goEval');
+  var erHtml =
+    '<h4>🧠 阵容强度评估（模型评分 0-100）</h4>' +
+    '<div class="er-row"><span class="er-name blue">蓝方 · ' + esc(S.teams[bt]) + '</span>' +
+    '<div class="er-bar blue"><div style="width:' + bEval.score + '%"></div></div>' +
+    '<span class="er-score">' + bEval.score + '</span></div>' +
+    '<div class="er-row"><span class="er-name red">红方 · ' + esc(S.teams[1 - bt]) + '</span>' +
+    '<div class="er-bar red"><div style="width:' + rEval.score + '%"></div></div>' +
+    '<span class="er-score">' + rEval.score + '</span></div>' +
+    '<div class="prob-wrap"><div class="prob-bar">' +
+    '<div class="pb blue" style="width:' + Math.max(18, Math.round(pBlue * 100)) + '%">蓝方 ' + Math.round(pBlue * 100) + '%</div>' +
+    '<div class="pb red" style="width:' + Math.max(18, 100 - Math.round(pBlue * 100)) + '%">红方 ' + (100 - Math.round(pBlue * 100)) + '%</div>' +
+    '</div><div class="prob-cap">胜率预测：逻辑回归（蓝方效应' + (MDATA.coefs.w0 > 0 ? '+' : '') + MDATA.coefs.w0 + ' · 阵容强度系数' + MDATA.coefs.wh + ' · 队伍实力系数' + MDATA.coefs.wt + '）' +
+    (tdi.real ? '（已含真实队伍实力修正）' : '（自定义队伍按均势处理）') + '</div></div>';
+
+  // 建议要点
+  var tips = [];
+  var d = bEval.score - rEval.score;
+  if (Math.abs(d) >= 8) {
+    tips.push('<b>' + esc(d > 0 ? S.teams[bt] : S.teams[1 - bt]) + '</b>阵容强度明显占优（差' + Math.abs(d) + '分）');
+  } else if (Math.abs(d) >= 3) {
+    tips.push('<b>' + esc(d > 0 ? S.teams[bt] : S.teams[1 - bt]) + '</b>阵容强度略占优（差' + Math.abs(d) + '分）');
+  } else {
+    tips.push('双方阵容强度接近，胜负更取决于选手状态与局内运营');
+  }
+  [[bEval, '蓝方'], [rEval, '红方']].forEach(function (x) {
+    x[0].syn.slice(0, 2).forEach(function (s) {
+      tips.push(x[1] + '协同组合：<b>' + s[0] + ' + ' + s[1] + '</b>（同队胜率' + Math.round(s[2] * 100) + '%，' + s[3] + '场）');
+    });
+  });
+  bEval.ctrUp.slice(0, 2).forEach(function (c) {
+    tips.push('对位克制：蓝方<b>' + c[0] + '</b> → 红方' + c[1] + '（对位胜率' + Math.round(c[2] * 100) + '%）');
+  });
+  rEval.ctrUp.slice(0, 2).forEach(function (c) {
+    tips.push('对位克制：红方<b>' + c[0] + '</b> → 蓝方' + c[1] + '（对位胜率' + Math.round(c[2] * 100) + '%）');
+  });
+  if (bEval.ctrDown.length || rEval.ctrDown.length) {
+    tips.push('双方存在对位克制关系，BP博弈关键在于扬长避短');
+  }
+  if (g.blind) tips.push('巅峰对决镜像概率高：2026季后赛5次巅峰对决中敖隐10/10全勤、赵云8/10、小乔与钟馗各6/10');
+  tips.push('⚠ 模型对单局胜负预测力有限（LOO-CV准确率约46%），评分仅供参考');
+  erHtml += '<ul class="advice-list">' + tips.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul>';
+  ev.innerHTML = erHtml;
+
+  document.getElementById('goWinBlue').textContent = '蓝方 ' + S.teams[bt] + ' 获胜';
+  document.getElementById('goWinRed').textContent = '红方 ' + S.teams[1 - bt] + ' 获胜';
+  document.getElementById('goDesc').textContent = g.blind
+    ? '巅峰对决阵容揭晓！模型评估如下，请根据比赛结果选择获胜方。'
+    : '本局BP流程结束。模型评估如下，请根据比赛结果选择获胜方。';
+  document.getElementById('gameOverlay').classList.remove('hidden');
+}
+
+function closeGameModal() {
+  document.getElementById('gameOverlay').classList.add('hidden');
+}
+
+function chooseWinner(winTeam) {
+  closeGameModal();
+  var g = S.game;
+  S.score[winTeam]++;
+  S.finished = g.no;
+  addLog('—— 第' + g.no + '局结束：' + esc(S.teams[winTeam]) + ' 获胜（大比分 ' + S.score[0] + ':' + S.score[1] + '）——');
+  if (S.globalBP && !g.blind) {
+    for (var t = 0; t < 2; t++) {
+      g.picks[t].forEach(function (n) { S.usedHeroes.push({ n: n, game: g.no, team: t }); });
+    }
+  }
+  var need = winsNeeded(S.bo);
+  if (S.score[winTeam] >= need) {
+    S.game = null;
+    stopTimer();
+    renderAll();
+    document.getElementById('champName').textContent = S.teams[winTeam] + ' 夺得冠军';
+    document.getElementById('champScore').textContent = '系列赛比分 ' + S.score[0] + ' : ' + S.score[1] + '（BO' + S.bo + '）';
+    document.getElementById('champOverlay').classList.remove('hidden');
+    return;
+  }
+  startGame();
+}
+
+function confirmResetGame() {
+  if (!S || !S.game) return;
+  if (confirm('确定要重置本局BP吗？')) {
+    stopTimer();
+    historyStack = [];
+    addLog('—— 第' + S.game.no + '局BP重置 ——');
+    S.game = newGame();
+    renderAll();
+    startTimer();
+  }
+}
+
+function confirmResetSeries() {
+  if (!S) return;
+  if (confirm('确定要重置整个系列赛吗？比分与全局BP记录都会清空。')) {
+    location.reload();
+  }
+}
+
+function openRules() {
+  document.getElementById('rulesOverlay').classList.remove('hidden');
+}
+
+/* ================= 初始化 ================= */
+fillTeamDatalist();
+</script>
+</body>
+</html>
